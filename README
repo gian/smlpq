@@ -1,4 +1,4 @@
-This is a port of the smlsql PostgreSQL interface to MLton.
+This is a port of the smlsql (http://smlweb.cvs.sourceforge.net/viewvc/smlweb/smlsql/) PostgreSQL interface to MLton.
 
 It is mostly untested and possibly buggy, but it's a start.  You need libpq installed.
 
