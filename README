@@ -1,0 +1,5 @@
+This is a port of the smlsql PostgreSQL interface to MLton.
+
+It is mostly untested and possibly buggy, but it's a start.  You need libpq installed.
+
+To get an idea of how to use it, take a look at pq-test.sml and the sql_driver/sql_client signatures.
