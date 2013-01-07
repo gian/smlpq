@@ -1,12 +1,3 @@
-ann
-   "allowFFI true"
-in
-	$(SML_LIB)/basis/basis.mlb
-	$(SML_LIB)/basis/mlton.mlb
-	sql_driver.sig
-	sql_client.sig
-	sql_client.sml
-	sqlite.sml
-	sqlite-test.sml
-end
+sqlite.mlb
+sqlite-test.sml
 

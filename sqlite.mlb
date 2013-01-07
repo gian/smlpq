@@ -3,6 +3,7 @@ ann
 in
 	$(SML_LIB)/basis/basis.mlb
 	$(SML_LIB)/basis/mlton.mlb
+	util.sml
 	sql_driver.sig
 	sql_client.sig
 	sql_client.sml

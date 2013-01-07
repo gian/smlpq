@@ -1,26 +1,24 @@
-
-
-(* Hacky CString module wrapping MLton.Pointer.t *)
-structure CString =
-struct
-    type cstring = MLton.Pointer.t
-
-    (* Convert a cstring to an ML string *)
-    fun toString s =
-        let
-            fun loop (l,i) =
-                case MLton.Pointer.getWord8 (s,i) of
-                     0w0 => String.implode (rev l)
-                   | c => loop ((Byte.byteToChar c) :: l, i + 1)
-        in
-            loop ([], 0)
-        end
-
-    (* Convert an ML string to a null-terminated C string *)
-    fun fromString s = s ^ "\000"
-
-    fun free s = ()
-end
+(*
+ * MLton SQLite bindings
+ * Copyright (C) 2013 Filip Sieczkowski
+ *
+ * Adapted from SQL database interfaces for Standard ML
+ * Copyright (C) 2003  Adam Chlipala
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ * 
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *)
 
 structure SQLite :> SQL_DRIVER =
 struct
@@ -29,7 +27,7 @@ struct
     exception Sql of string
 
     type byte = Word8.word
-    datatype value = INT of int | REAL of real | STRING of string | NULL
+    type value = string option
     type result = MLton.Pointer.t
 
     fun sqlite_errstr n =
@@ -67,9 +65,9 @@ struct
     val sqlite_colT = _import "sqlite3_column_type" : query * int -> int;
     val sqlite_nbytes = _import "sqlite3_column_bytes" : query * int -> int;
 
-    val sqlite_VBlob = _import "sqlite3_column_blob" : query * int -> result;
+    (*val sqlite_VBlob = _import "sqlite3_column_blob" : query * int -> result;
     val sqlite_VInt  = _import "sqlite3_column_int"  : query * int -> int;
-    val sqlite_VReal = _import "sqlite3_column_double" : query * int -> real;
+    val sqlite_VReal = _import "sqlite3_column_double" : query * int -> real;*)
     val sqlite_VString = _import "sqlite3_column_text" : query * int -> result;
 
     (* does not work, since function pointers used
@@ -106,13 +104,11 @@ struct
 	    fun getRest n acc =
 		if n = ncols then acc
 		else
-		    let val v = case sqlite_colT (!cqr, n) of
-				    1 (* INT *) => INT (sqlite_VInt (!cqr, n))
-				  | 2 (* REAL *) => REAL (sqlite_VReal (!cqr, n))
-				  | 3 (* STR *) => STRING (CString.toString (sqlite_VString (!cqr, n)))
-				  | 4 (* BLOB *) => STRING (CString.toString (sqlite_VString (!cqr, n))) (* This converts a blob to string *)
-				  | 5 (* NULL *) => NULL
-				  | _ => raise Sql "Undefined type returned (this really should not happen, something is probably wrong with sqlite)"
+		    let val typ = sqlite_colT (!cqr, n)
+			val v = if typ = 5 then NONE
+				else if typ >= 1 andalso typ < 5 then
+				    (SOME o CString.toString o sqlite_VString) (!cqr, n)
+				else raise Sql "Undefined type returned (this really should not happen, something is probably wrong with sqlite)"
 		    in getRest (n + 1) (v :: acc)
 		    end
 	    fun getVals () = rev (getRest 0 [])
@@ -135,14 +131,14 @@ struct
 
     (* Conversions between SML values and their string representations from SQL queries *)
 
-(*    fun valueOf v =
+    fun valueOf v =
     case v of
         NONE => raise Sql "Trying to read NULL value"
-      | SOME v => v*)
+      | SOME v => v
 
     fun isNull v =
 	case v of
-            NULL => true
+            NONE => true
 	  | _ => false
 
 (*    fun blobToString b = (String.implode o rev) (foldl (fn (b, xs) => Byte.byteToChar b :: xs) [] b)*)
@@ -157,11 +153,7 @@ struct
 	(case Int.fromString s of
              NONE => raise Format ("Bad integer: " ^ s)
 	   | SOME n => n)
-    fun intFromSql (INT n) = n
-      | intFromSql (REAL r) = floor r
-      | intFromSql (STRING s) = intFromSqlS s
-(*      | intFromSql (BLOB b) = intFromSqlS (blobToString b)*)
-      | intFromSql NULL = raise Sql "Trying to read NULL value"
+    val intFromSql = intFromSqlS o valueOf
 
     fun realToSql s =
     if s < 0.0 then
@@ -173,11 +165,7 @@ struct
     (case Real.fromString s of
          NONE => raise Format ("Bad real: " ^ s)
        | SOME r => r)
-    fun realFromSql (INT n) = Real.fromInt n
-      | realFromSql (REAL r) = r
-      | realFromSql (STRING s) = realFromSql' s
-(*      | realFromSql (BLOB b) = realFromSql' (blobToString b)*)
-      | realFromSql NULL = raise Sql "Trying to read NULL value"
+    val realFromSql = realFromSql' o valueOf
     fun realToString s = realToSql s
 
     fun stringToSql s =
@@ -189,11 +177,7 @@ struct
     in
         foldl (fn (c, s) => s ^ xch c) "'" (String.explode s) ^ "'"
     end
-    fun stringFromSql (INT n) = intToSql n
-      | stringFromSql (REAL r) = realToSql r
-      | stringFromSql (STRING s) = s
-(*      | stringFromSql (BLOB b) = blobToString b*)
-      | stringFromSql NULL = raise Sql "Trying to read NULL value"
+    val stringFromSql = valueOf
 
     fun toMonth m =
     let
@@ -286,7 +270,7 @@ struct
                     second = valOf (Int.fromString second) div 1000, year = valOf (Int.fromString year)})
           | _ => raise Format ("Invalid timestamp " ^ s)
     end
-    fun timestampFromSql v = timestampFromSql' (stringFromSql v)
+    val timestampFromSql = timestampFromSql' o valueOf
 
 
     fun boolToSql true = "TRUE"
@@ -301,11 +285,7 @@ struct
       | boolFromSql' "" = false
       | boolFromSql' _ = true
 
-    fun boolFromSql (INT n) = n <> 0
-      | boolFromSql (REAL r) = Real.!= (r,0.0)
-      | boolFromSql (STRING s) = boolFromSql' s
-(*      | boolFromSql (BLOB b) = boolFromSql' (blobToString b)*)
-      | boolFromSql NULL = raise Sql "Trying to read NULL value"
+    val boolFromSql = boolFromSql' o valueOf
 
 end
 
