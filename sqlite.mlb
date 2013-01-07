@@ -7,6 +7,6 @@ in
 	sql_driver.sig
 	sql_client.sig
 	sql_client.sml
-	pq.sml
+	sqlite.sml
 end
 
